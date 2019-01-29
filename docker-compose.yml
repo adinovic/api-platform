@@ -1,19 +1,21 @@
 version: '3.4'
 
+x-cache:
+  &cache
+  cache_from:
+    - ${CONTAINER_REGISTRY_BASE}/php
+    - ${CONTAINER_REGISTRY_BASE}/nginx
+    - ${CONTAINER_REGISTRY_BASE}/varnish
+
 services:
   php:
     image: ${CONTAINER_REGISTRY_BASE}/php
     build:
       context: ./api
       target: api_platform_php
-      cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/php
-        - ${CONTAINER_REGISTRY_BASE}/nginx
-        - ${CONTAINER_REGISTRY_BASE}/varnish
+      <<: *cache
     depends_on:
       - db
-    env_file:
-      - ./api/.env
     # Comment out these volumes in production
     volumes:
       - ./api:/srv/api:rw,cached
@@ -25,10 +27,7 @@ services:
     build:
       context: ./api
       target: api_platform_nginx
-      cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/php
-        - ${CONTAINER_REGISTRY_BASE}/nginx
-        - ${CONTAINER_REGISTRY_BASE}/varnish
+      <<: *cache
     depends_on:
       - php
     # Comment out this volume in production
@@ -42,10 +41,7 @@ services:
     build:
       context: ./api
       target: api_platform_varnish
-      cache_from:
-        - ${CONTAINER_REGISTRY_BASE}/php
-        - ${CONTAINER_REGISTRY_BASE}/nginx
-        - ${CONTAINER_REGISTRY_BASE}/varnish
+      <<: *cache
     depends_on:
       - api
     volumes:
@@ -57,22 +53,36 @@ services:
 
   db:
     # In production, you may want to use a managed database service
-    image: postgres:10-alpine
+    image: mysql:5.7
     environment:
-      - POSTGRES_DB=api
-      - POSTGRES_USER=api-platform
-      # You should definitely change the password in production
-      - POSTGRES_PASSWORD=!ChangeMe!
+      - MYSQL_ROOT_PASSWORD=rootsekali
+      - MYSQL_DATABASE=api
+      - MYSQL_USER="api-platform"
+      - MYSQL_PASSWORD="apisekali"
     volumes:
-      - db-data:/var/lib/postgresql/data:rw
+      - db-data:/var/lib/mysql
+#      - db-data:/var/lib/postgresql/data:rw
       # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
       # - ./docker/db/data:/var/lib/postgresql/data:rw
     ports:
-      - "5432:5432"
+      - "3306:3306"
+
+  mercure:
+    # In production, you may want to use the managed version of Mercure, https://mercure.rocks
+    image: dunglas/mercure
+    environment:
+      # You should definitely change all these values in production
+      - JWT_KEY=!UnsecureChangeMe!
+      - ALLOW_ANONYMOUS=1
+      - CORS_ALLOWED_ORIGINS=*
+      - PUBLISH_ALLOWED_ORIGINS=http://localhost:1337,https://localhost:1338
+      - DEMO=1
+    ports:
+      - "1337:80"
 
   client:
     # Use a static website hosting service in production
-    # See https://github.com/facebookincubator/create-react-app/blob/master/packages/react-scripts/template/README.md#deployment
+    # See https://facebook.github.io/create-react-app/docs/deployment
     image: ${CONTAINER_REGISTRY_BASE}/client
     build:
       context: ./client
@@ -88,14 +98,12 @@ services:
 
   admin:
     # Use a static website hosting service in production
-    # See https://github.com/facebookincubator/create-react-app/blob/master/packages/react-scripts/template/README.md#deployment
+    # See https://facebook.github.io/create-react-app/docs/deployment
     image: ${CONTAINER_REGISTRY_BASE}/admin
     build:
       context: ./admin
       cache_from:
         - ${CONTAINER_REGISTRY_BASE}/admin
-    env_file:
-      - ./admin/.env
     volumes:
       - ./admin:/usr/src/admin:rw,cached
       - /usr/src/admin/node_modules

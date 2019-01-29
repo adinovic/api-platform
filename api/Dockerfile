@@ -13,10 +13,9 @@ RUN apk add --no-cache \
 		file \
 		gettext \
 		git \
-		postgresql-client \
 	;
 
-ARG APCU_VERSION=5.1.12
+ARG APCU_VERSION=5.1.16
 RUN set -eux; \
 	apk add --no-cache --virtual .build-deps \
 		$PHPIZE_DEPS \
@@ -29,7 +28,7 @@ RUN set -eux; \
 	docker-php-ext-configure zip --with-libzip; \
 	docker-php-ext-install -j$(nproc) \
 		intl \
-		pdo_pgsql \
+		pdo_mysql \
 		zip \
 	; \
 	pecl install \
@@ -53,13 +52,12 @@ RUN set -eux; \
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 RUN ln -s $PHP_INI_DIR/php.ini-production $PHP_INI_DIR/php.ini
-COPY docker/php/api-platform.ini $PHP_INI_DIR/conf.d/
+COPY docker/php/conf.d/api-platform.ini $PHP_INI_DIR/conf.d/api-platform.ini
 
 # https://getcomposer.org/doc/03-cli.md#composer-allow-superuser
 ENV COMPOSER_ALLOW_SUPERUSER=1
-RUN set -eux; \
-	composer global require "hirak/prestissimo:^0.3" --prefer-dist --no-progress --no-suggest --classmap-authoritative; \
-	composer clear-cache
+# install Symfony Flex globally to speed up download of Composer packages (parallelized prefetching)
+RUN composer global require "symfony/flex" --prefer-dist --no-progress --no-suggest --classmap-authoritative
 ENV PATH="${PATH}:/root/.composer/vendor/bin"
 
 WORKDIR /srv/api
@@ -69,6 +67,8 @@ ARG APP_ENV=prod
 
 # prevent the reinstallation of vendors at every changes in the source code
 COPY composer.json composer.lock symfony.lock ./
+# do not use .env files in production
+RUN echo '<?php return [];' > .env.local.php
 RUN set -eux; \
 	composer install --prefer-dist --no-dev --no-autoloader --no-scripts --no-progress --no-suggest; \
 	composer clear-cache
